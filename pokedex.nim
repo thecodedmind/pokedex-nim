@@ -1,4 +1,4 @@
-import pokenim, lib/strplus, lib/opthandler, strutils
+import pokeapi, lib/strplus, lib/opthandler, strutils
 
 proc main() =
     var
