@@ -6,13 +6,18 @@ const BASEURL = "https://pokeapi.co/api/v2/"
 
 type
     Species* = object
-        name*: string
-        id*: int
+        name*, shape*, colour*, color*: string
+        id*, captureRate*, baseHappiness*: int
+        baby*: bool
+        text*: seq[Table[string, string]]
         json*: JsonNode
+        evolvesTo*: seq[Table[string, string]]
+        evolvesFrom*: string
         
     Move* = object
-        name*: string
-        id*: int
+        name*, moveType*, damageClass*: string
+        id*, accuracy*, power*, pp*, priority*, effectChance*: int
+        text*, effects*: seq[Table[string, string]]
         json*: JsonNode
         
     Game* = object
@@ -24,6 +29,7 @@ type
         name*: string
         hidden*: bool
         id*: int
+        text*, effects*: seq[Table[string, string]]
         json*: JsonNode
 
     Location* = object
@@ -32,6 +38,11 @@ type
         json*: JsonNode
         
     Berry* = object
+        name*: string
+        id*: int
+        json*: JsonNode
+
+    Item* = object
         name*: string
         id*: int
         json*: JsonNode
@@ -48,13 +59,19 @@ type
         doubleDamageFrom*: seq[string]
         
     Pokemon* = object
-        name*: string
+        name*, species*: string
         id*, height*: int
-        species*: Species
         types*: seq[Type]
         abilities*: seq[Ability]
         sprites*: Table[string, string]
         json*: JsonNode
+        
+proc isNum(s:string): bool =
+    try:
+        discard s.parseInt()
+        return true
+    except:
+        return false
 
 proc pokedexCacheDir*(): string =
     if getEnv("POKEDEX_CACHE_DIR", "") != "":
@@ -81,14 +98,78 @@ proc existsCache(group, key:string): bool =
         return false
                  
     return true
-  
-proc api*(endpoint, value: string): JsonNode =
-    if existsCache(endpoint, value):
-        return getCache(endpoint, value)
-    else:
-        result = newHttpClient().getContent(BASEURL&endpoint&"/"&value).parseJson()
-        putCache(endpoint, value, result)
 
+proc getObjectIndex(endpoint:string): Table[int, string] =
+    if fileExists(pokedexCacheDir()&"index_"&endpoint&".pkmn"):
+        let ln = readFile(pokedexCacheDir()&"index_"&endpoint&".pkmn").split("\n")
+        for line in ln:
+            if ":" in line:
+                result[line.split(":")[0].parseInt] = line.split(":")[1]
+        
+proc putObjectIndex(d:Table[int, string], endpoint:string) =
+    var body = ""
+    for k, v in d.pairs:
+        body.add k.intToStr&":"&v&"\n"
+    writeFile(pokedexCacheDir()&"index_"&endpoint&".pkmn", body)
+            
+proc api*(endpoint, value: string): JsonNode =
+    var name = value
+    var updateIndex = false
+    
+    if name.isNum and endpoint != "evolution-chain":
+        let index = getObjectIndex(endpoint)
+        echo index
+        if index.hasKey(name.parseInt):
+            name = index[name.parseInt]
+        else:
+            updateIndex = true
+
+    if existsCache(endpoint, name):
+        return getCache(endpoint, name)
+    else:
+        result = newHttpClient(AGENT).getContent(BASEURL&endpoint&"/"&name).parseJson()
+
+        putCache(endpoint, name, result)
+        
+    if updateIndex:
+        var index = getObjectIndex(endpoint)
+        index[name.parseInt] = result["name"].getStr
+        index.putObjectIndex(endpoint)
+        
+proc getSpecies*(name:string):Species =
+    result.json = api("pokemon-species", name)
+    result.name = result.json["name"].getStr
+    result.id = result.json["id"].getInt
+    result.colour = result.json["color"]["name"].getStr
+    result.color = result.json["color"]["name"].getStr
+
+    let evo = api("evolution-chain", result.json["evolution_chain"]["url"].getStr().split("evolution-chain/")[1].replace("/", ""))
+
+    for e in evo["chain"]["evolves_to"]:
+        var t = {"name": e["species"]["name"].getStr, "baby": $e["is_baby"].getBool}.toTable
+        
+        if e["evolution_details"].getElems.len > 0:
+        
+            let details = e["evolution_details"][0]
+            if details["min_level"].kind != JNull:
+                t["level"] = details["min_level"].getStr
+
+            if details["item"].kind != JNull:
+                t["item"] = details["item"]["name"].getStr
+            
+        result.evolvesTo.add t
+
+    if result.json["evolves_from_species"].kind != JNull:
+        result.evolvesFrom = result.json["evolves_from_species"]["name"].getStr
+    
+    for text in result.json["flavor_text_entries"]:
+        result.text.add {"body": text["flavor_text"].getStr,
+                          "lang": text["language"]["name"].getStr,
+                          "version": text["version"]["name"].getStr}.toTable
+        
+proc getSpecies*(pkmn:Pokemon):Species =
+    return getSpecies(pkmn.species)
+    
 proc getType*(name:string): Type =
     result.json = api("type", name)
     result.name = result.json["name"].getStr
@@ -111,13 +192,58 @@ proc getType*(name:string): Type =
         
     for t in result.json["damage_relations"]["no_damage_to"]:
         result.noDamageTo.add t["name"].getStr
+
+proc getTypes*(pkmn:Pokemon): seq[Type] =
+    for t in pkmn.types:
+        result.add getType(t.name)
+
+proc getAbility*(name:string): Ability =
+    result.json = api("ability", name)
+    result.name = result.json["name"].getStr
+    result.id = result.json["id"].getInt
+    
+    for text in result.json["flavor_text_entries"]:
+        result.text.add {"body": text["flavor_text"].getStr,
+                          "lang": text["language"]["name"].getStr,
+                          "version": text["version_group"]["name"].getStr}.toTable
         
-proc getPokemon*(name:string):Pokemon =
-    result.json = api("pokemon", name)
+    for text in result.json["effect_entries"]:
+        result.effects.add {"body": text["effect"].getStr,
+                          "lang": text["language"]["name"].getStr,
+                          "short": text["short_effect"].getStr}.toTable
+        
+proc getMove*(name:string): Move =
+    result.json = api("move", name)
+    result.name = result.json["name"].getStr
+    result.id = result.json["id"].getInt
+    result.moveType = result.json["type"]["name"].getStr
+    result.damageclass = result.json["damage_class"]["name"].getStr
+    result.effectChance = result.json["effect_chance"].getInt
+    result.accuracy = result.json["accuracy"].getInt
+    result.power = result.json["power"].getInt
+    result.pp = result.json["pp"].getInt
+    for text in result.json["flavor_text_entries"]:
+        result.text.add {"body": text["flavor_text"].getStr,
+                          "lang": text["language"]["name"].getStr,
+                          "version": text["version_group"]["name"].getStr}.toTable
+        
+    for text in result.json["effect_entries"]:
+        result.effects.add {"body": text["effect"].getStr,
+                          "lang": text["language"]["name"].getStr,
+                          "short": text["short_effect"].getStr}.toTable
+        
+proc getPokemon*(n:string):Pokemon =    
+    result.json = api("pokemon", n)
     result.name = result.json["name"].getStr
     result.id = result.json["id"].getInt
     result.height = result.json["height"].getInt
-
+    result.species = result.json["species"]["name"].getStr
     for t in result.json["types"]:
         result.types.add getType(t["type"]["name"].getStr)
-        
+
+    var a:Ability
+    
+    for t in result.json["abilities"]:
+        a = getAbility(t["ability"]["name"].getStr)
+        a.hidden = t["is_hidden"].getBool
+        result.abilities.add a
