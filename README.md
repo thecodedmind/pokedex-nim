@@ -9,10 +9,19 @@ Basic functionality for now, will be expanded later.<br>
 Directly calls functions from the pokenim.nim library and parses them in to human-readable formats.
 
 $ pokedex pokemon <name/id>
-Shows a pokemon, with currently name, ID, and types. (WIP)
+Shows a pokemon basic details.
 
 $ pokedex type <name/id>
-Shows a type and its damage relations. (WIP)
+Shows a type and its damage relations. 
+
+$ pokedex move <name/id>
+Shows a moves details.
+
+$ pokedex ability <name/id>
+Shows an abilities details.
+
+$ pokedex <pokemon name>
+If no sub-command given, defaults to showing detailed information about pokemon
 
 More functionality eventually.
 
@@ -29,13 +38,22 @@ proc api*(endpoint, value: string): JsonNode
 # If the object exists in the cache, returns that json
 # Else calls the API server, saves the response to cache (if response is found), then returns that.
 
+proc getSpecies*(name:string):Species
+
+proc getSpecies*(pkmn:Pokemon):Species
+
 proc getType*(name:string): Type
 # Returns a formatted Type object
 # Only contains name, id and damage relations for now, more coming soon, along with convenience and wrapper functions.
 
+proc getTypes*(pkmn:Pokemon): seq[Type]
+
+proc getAbility*(name:string): Ability
+proc getMove*(name:string): Move
+
 proc getPokemon*(name:string):Pokemon
 # Returns a formatted Pokemon object
-# Only contains name, id and types for now, more coming soon, along with convenience and wrapper functions.
+# Only contains basic details more coming soon, along with convenience and wrapper functions.
 ```
 
 # Todo
