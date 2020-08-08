@@ -2,6 +2,7 @@
 A CLI Pokemon Pokedex app, and companion library written in Nim, with full caching.<br>
 Cache default directory is $HOME/.cache/pokedex
 I don't know how that works on Windows, I only have Linux to work with, but you can define a custom cache directory with POKEDEX_CACHE_DIR environment variable.
+Compiling only needs standard library, and my library files from [here](https://github.com/Kaiz0r/nim-libs).
 
 # pokedex.nim
 Source file for the commandline application.<br>
