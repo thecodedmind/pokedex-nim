@@ -32,11 +32,35 @@ type
         text*, effects*: seq[Table[string, string]]
         json*: JsonNode
 
-    Location* = object
+    Generation* = object
         name*: string
         id*: int
         json*: JsonNode
+
+    Region* = object
+        name*, gen*: string
+        id*: int
+        games*, locations*: seq[string]
+        json*: JsonNode
+
+    Encounter* = object
+        name*, version*, encmethod*: string
+        chance*, maxchance*, maxlvl*, minlvl*: int
+        conditions*: seq[string]
+            
+    LocationArea* = object
+        name*, location*: string
+        id*: int
+        encounters*: seq[Encounter]
+        json*: JsonNode
         
+    Location* = object
+        name*, region*: string
+        id*: int
+        gen*, areas*: seq[string]
+        json*: JsonNode
+
+    
     Berry* = object
         name*: string
         id*: int
@@ -135,6 +159,35 @@ proc api*(endpoint, value: string): JsonNode =
         var index = getObjectIndex(endpoint)
         index[name.parseInt] = result["name"].getStr
         index.putObjectIndex(endpoint)
+
+proc getLocationArea*(name:string):LocationArea =
+    result.json = api("location-area", name)
+    result.name = result.json["name"].getStr
+    result.id = result.json["id"].getInt
+    result.location = result.json["location"]["name"].getstr
+    
+    for enc in result.json["pokemon_encounters"]:
+        for d in enc["version_details"]:
+            for m in d["encounter_details"]:
+                var e = Encounter(name: enc["pokemon"]["name"].getStr, encmethod: m["method"]["name"].getStr)
+                e.version = d["version"]["name"].getStr
+                e.maxchance = d["max_chance"].getInt
+                e.chance = m["chance"].getInt
+                e.maxlvl = m["max_level"].getInt
+                e.minlvl = m["min_level"].getInt
+                for cond in m["condition_values"]:
+                    e.conditions.add cond["name"].getStr
+                result.encounters.add e
+                
+proc getLocation*(name:string):Location =
+    result.json = api("location", name)
+    result.name = result.json["name"].getStr
+    result.id = result.json["id"].getInt
+    result.region = result.json["region"]["name"].getstr
+    for area in result.json["areas"]:
+        result.areas.add area["name"].getStr
+    for game in result.json["game_indices"]:
+        result.gen.add game["generation"]["name"].getStr
         
 proc getSpecies*(name:string):Species =
     result.json = api("pokemon-species", name)
@@ -145,19 +198,36 @@ proc getSpecies*(name:string):Species =
 
     let evo = api("evolution-chain", result.json["evolution_chain"]["url"].getStr().split("evolution-chain/")[1].replace("/", ""))
 
-    for e in evo["chain"]["evolves_to"]:
-        var t = {"name": e["species"]["name"].getStr, "baby": $e["is_baby"].getBool}.toTable
-        
+    #var t = {}.toTable
+    
+    for e in evo["chain"]["evolves_to"]:        
         if e["evolution_details"].getElems.len > 0:
-        
-            let details = e["evolution_details"][0]
-            if details["min_level"].kind != JNull:
-                t["level"] = details["min_level"].getStr
+            for details in e["evolution_details"]:
+                var t = {"name": e["species"]["name"].getStr, "baby": $e["is_baby"].getBool}.toTable
+                if details["min_level"].kind != JNull:
+                    t["level"] = details["min_level"].getStr
 
-            if details["item"].kind != JNull:
-                t["item"] = details["item"]["name"].getStr
-            
-        result.evolvesTo.add t
+                if details["item"].kind != JNull:
+                    t["item"] = details["item"]["name"].getStr
+
+                if details["min_happiness"].kind != JNull:
+                    t["happiness"] = details["min_happiness"].getInt.intToStr
+                    
+                if details["min_affection"].kind != JNull:
+                    t["affection"] = details["min_affection"].getInt.intToStr
+    
+                if details["time_of_day"].getStr != "":
+                    t["time"] = details["time_of_day"].getStr
+
+                if details["location"].kind != JNull:
+                    t["location"] = details["location"]["name"].getStr
+                    
+                if details["known_move_type"].kind != JNull:
+                    t["known_move_type"] = details["known_move_type"]["name"].getStr
+
+                t["trigger"] = details["trigger"]["name"].getStr
+
+                result.evolvesTo.add t
 
     if result.json["evolves_from_species"].kind != JNull:
         result.evolvesFrom = result.json["evolves_from_species"]["name"].getStr

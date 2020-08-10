@@ -55,11 +55,46 @@ proc main() =
                         echo " - "&ty["lang"]&" "&ty["version"]
                         echo ""
                         break
-                            
+
+        of "area":
+            echo ""
+            let ar = getLocationArea(b.command(1))
+            echo "#"&ar.id.intToStr&": "&ar.name
+            echo "An area inside "&ar.location
+            echo "\nEncounters:"
+            for enc in ar.encounters:
+                var doit = false
+                if b.flag("name") != "":
+                    if b.flag("name") == enc.name:
+                        doit = true
+                       
+                if b.flag("version") != "":
+                    if b.flag("version") == enc.version:
+                        doit = true
+                    
+                if b.flag("name") == "" and b.flag("version") == "":
+                    doit = true
+                    
+                if doit:
+                    var t = "["&enc.version&"] "&enc.name
+                    t.add " | Method: "&enc.encmethod
+                    t.add " | Odds: "&enc.chance.intToStr&"%-"&enc.maxchance.intToStr&"%"
+                    t.add " | Level Range: "&enc.minlvl.intToStr&"-"&enc.maxlvl.intToStr
+                    if enc.conditions.len > 0:
+                        t.add " | Conditions: "&enc.conditions.join("; ")
+                    echo t 
+            echo ""
+                
+        of "location":
+            echo ""
+            let lo = getLocation(b.command(1))
+            echo "#"&lo.id.intToStr&": "&lo.name&" in the "&lo.region&" region ["&lo.gen.join(";")&"]"
+            echo "Areas: \n"&lo.areas.join("\n")
+            
         of "ability":
             echo ""
             let ab = getAbility(b.command(1))
-            echo ab.name
+            echo "#"&ab.id.intToStr&": "&ab.name
             for a in ab.effects:
                 if a["lang"] == lang:
                     echo a["body"].replace("\n", " ")
@@ -87,8 +122,8 @@ proc main() =
                 
                 for ty in sp.text:
                     if ty["lang"] == lang:
-                        if b.flag("dv") != "":
-                            if b.flag("dv") in ty["version"]:
+                        if b.flag("version") != "":
+                            if b.flag("version") in ty["version"]:
                                 echo ty["body"]
                                 echo " - "&ty["lang"]&" "&ty["version"]
                                 echo ""
@@ -120,6 +155,10 @@ proc main() =
 
                 
         else:
+            if b.commands.len == 0:
+                echo "No command given."
+                return
+                
             let pkm = getPokemon(b.command(0))
             let sp = pkm.getSpecies()
             let types = pkm.types
@@ -130,15 +169,36 @@ proc main() =
 
             if sp.evolvesFrom != "":
                 echo "Evolves from "&sp.evolvesFrom&"\n"
-
+                
+            var t:string
+            
             for ev in sp.evolvesTo:
                 if ev["baby"] != "true":
-                    echo "Evolves to "&ev["name"]
+                    t = "Evolves to "&ev["name"]
                     if ev.hasKey("level"):
-                        echo " at level "&ev["level"]&"\n"
+                        t.add " at LVL "&ev["level"]
 
                     if ev.hasKey("item"):
-                        echo " using item "&ev["item"]&"\n"
+                        t.add " using item "&ev["item"]
+
+                    if ev.hasKey("happiness"):
+                        t.add " at happiness "&ev["happiness"]
+
+                    if ev.hasKey("effection"):
+                        t.add " at effection "&ev["effection"]
+                        
+                    if ev.hasKey("known_move_type"):
+                        t.add " while knowing a move of type "&ev["known_move_type"]
+                        
+                    if ev.hasKey("time"):
+                        t.add " during "&ev["time"]    
+
+                    if ev.hasKey("location"):
+                        t.add " in location "&ev["location"]
+                        
+                    t.add " (TRIGGER: "&ev["trigger"]&")"
+                    echo t
+                        
                     
             echo ""
                 
