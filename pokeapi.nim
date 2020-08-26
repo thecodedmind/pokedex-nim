@@ -5,6 +5,15 @@ const AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:72.0) Gecko/20100101 Firefox/7
 const BASEURL = "https://pokeapi.co/api/v2/"
 
 type
+    LearnableMoveDetails* = object
+        lmethod*:string
+        level*:int
+        version*:string
+        
+    LearnableMove* = object
+        name*:string
+        details*:seq[LearnableMoveDetails]
+
     Species* = object
         name*, shape*, colour*, color*: string
         id*, captureRate*, baseHappiness*: int
@@ -88,6 +97,7 @@ type
         types*: seq[Type]
         abilities*: seq[Ability]
         sprites*: Table[string, string]
+        moves*: seq[LearnableMove]
         json*: JsonNode
         
 proc isNum(s:string): bool =
@@ -142,7 +152,6 @@ proc api*(endpoint, value: string): JsonNode =
     
     if name.isNum and endpoint != "evolution-chain":
         let index = getObjectIndex(endpoint)
-        echo index
         if index.hasKey(name.parseInt):
             name = index[name.parseInt]
         else:
@@ -200,34 +209,35 @@ proc getSpecies*(name:string):Species =
 
     #var t = {}.toTable
     
-    for e in evo["chain"]["evolves_to"]:        
-        if e["evolution_details"].getElems.len > 0:
-            for details in e["evolution_details"]:
-                var t = {"name": e["species"]["name"].getStr, "baby": $e["is_baby"].getBool}.toTable
-                if details["min_level"].kind != JNull:
-                    t["level"] = details["min_level"].getStr
+    for e in evo["chain"]["evolves_to"]:
+        for s in e["evolves_to"]:
+            if s["evolution_details"].getElems.len > 0:
+                for details in s["evolution_details"]:
+                    var t = {"name": s["species"]["name"].getStr, "baby": $s["is_baby"].getBool}.toTable
+                    if details["min_level"].kind != JNull:
+                        t["level"] = details["min_level"].getInt.intToStr
 
-                if details["item"].kind != JNull:
-                    t["item"] = details["item"]["name"].getStr
+                    if details["item"].kind != JNull:
+                        t["item"] = details["item"]["name"].getStr
 
-                if details["min_happiness"].kind != JNull:
-                    t["happiness"] = details["min_happiness"].getInt.intToStr
-                    
-                if details["min_affection"].kind != JNull:
-                    t["affection"] = details["min_affection"].getInt.intToStr
-    
-                if details["time_of_day"].getStr != "":
-                    t["time"] = details["time_of_day"].getStr
+                    if details["min_happiness"].kind != JNull:
+                        t["happiness"] = details["min_happiness"].getInt.intToStr
+                        
+                    if details["min_affection"].kind != JNull:
+                        t["affection"] = details["min_affection"].getInt.intToStr
+                        
+                    if details["time_of_day"].getStr != "":
+                        t["time"] = details["time_of_day"].getStr
 
-                if details["location"].kind != JNull:
-                    t["location"] = details["location"]["name"].getStr
-                    
-                if details["known_move_type"].kind != JNull:
-                    t["known_move_type"] = details["known_move_type"]["name"].getStr
+                    if details["location"].kind != JNull:
+                        t["location"] = details["location"]["name"].getStr
+                        
+                    if details["known_move_type"].kind != JNull:
+                        t["known_move_type"] = details["known_move_type"]["name"].getStr
 
-                t["trigger"] = details["trigger"]["name"].getStr
+                    t["trigger"] = details["trigger"]["name"].getStr
 
-                result.evolvesTo.add t
+                    result.evolvesTo.add t
 
     if result.json["evolves_from_species"].kind != JNull:
         result.evolvesFrom = result.json["evolves_from_species"]["name"].getStr
@@ -302,6 +312,7 @@ proc getMove*(name:string): Move =
                           "lang": text["language"]["name"].getStr,
                           "short": text["short_effect"].getStr}.toTable
         
+
 proc getPokemon*(n:string):Pokemon =    
     result.json = api("pokemon", n)
     result.name = result.json["name"].getStr
@@ -311,6 +322,24 @@ proc getPokemon*(n:string):Pokemon =
     for t in result.json["types"]:
         result.types.add getType(t["type"]["name"].getStr)
 
+    result.sprites["default"] = result.json["sprites"]["back_default"].getStr
+    result.sprites["female"] = result.json["sprites"]["back_female"].getStr
+    result.sprites["shiny"] = result.json["sprites"]["back_shiny"].getStr
+    result.sprites["shiny_female"] = result.json["sprites"]["back_shiny_female"].getStr
+    result.sprites["front_default"] = result.json["sprites"]["front_default"].getStr
+    result.sprites["front_female"] = result.json["sprites"]["front_female"].getStr
+    result.sprites["front_shiny"] = result.json["sprites"]["front_shiny"].getStr
+    result.sprites["front_shiny_female"] = result.json["sprites"]["front_shiny_female"].getStr
+    result.sprites["artwork"] = result.json["sprites"]["other"]["official-artwork"]["front_default"].getStr
+    result.sprites["dream"] = result.json["sprites"]["other"]["dream_world"]["front_default"].getStr
+
+    
+    for t in result.json["moves"]:
+        var v = LearnableMove(name: t["move"]["name"].getStr)
+        for d in t["version_group_details"]:
+            var g = LearnableMoveDetails(lmethod: d["move_learn_method"]["name"].getStr, version: d["version_group"]["name"].getStr, level: d["level_learned_at"].getInt)
+            v.details.add g
+        result.moves.add v
     var a:Ability
     
     for t in result.json["abilities"]:
